@@ -51,9 +51,9 @@ import (
 	image_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/image"
 	link_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/link"
 	music_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/music"
-	plugin_admin_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/plugin_admin"
 	notification_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/notification"
 	page_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/page"
+	plugin_admin_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/plugin_admin"
 	post_category_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/post_category"
 	post_tag_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/post_tag"
 	proxy_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/proxy"
@@ -72,6 +72,7 @@ import (
 	version_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/version"
 	wechat_handler "github.com/anzhiyu-c/anheyu-app/pkg/handler/wechat"
 	"github.com/anzhiyu-c/anheyu-app/pkg/idgen"
+	"github.com/anzhiyu-c/anheyu-app/pkg/plugin"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/album"
 	album_category_service "github.com/anzhiyu-c/anheyu-app/pkg/service/album_category"
 	article_service "github.com/anzhiyu-c/anheyu-app/pkg/service/article"
@@ -87,9 +88,9 @@ import (
 	file_service "github.com/anzhiyu-c/anheyu-app/pkg/service/file"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/file_info"
 	geetest_service "github.com/anzhiyu-c/anheyu-app/pkg/service/geetest"
-	imagecaptcha_service "github.com/anzhiyu-c/anheyu-app/pkg/service/imagecaptcha"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/image_style"
 	image_style_engine "github.com/anzhiyu-c/anheyu-app/pkg/service/image_style/engine"
+	imagecaptcha_service "github.com/anzhiyu-c/anheyu-app/pkg/service/imagecaptcha"
 	link_service "github.com/anzhiyu-c/anheyu-app/pkg/service/link"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/music"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/notification"
@@ -98,10 +99,10 @@ import (
 	post_category_service "github.com/anzhiyu-c/anheyu-app/pkg/service/post_category"
 	post_tag_service "github.com/anzhiyu-c/anheyu-app/pkg/service/post_tag"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/process"
+	rss_service "github.com/anzhiyu-c/anheyu-app/pkg/service/rss"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/search"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/setting"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/sitemap"
-	rss_service "github.com/anzhiyu-c/anheyu-app/pkg/service/rss"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/statistics"
 	subscriber_service "github.com/anzhiyu-c/anheyu-app/pkg/service/subscriber"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/theme"
@@ -113,7 +114,6 @@ import (
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/volume/strategy"
 	wechat_service "github.com/anzhiyu-c/anheyu-app/pkg/service/wechat"
 	"github.com/anzhiyu-c/anheyu-app/pkg/ssr"
-	"github.com/anzhiyu-c/anheyu-app/pkg/plugin"
 	"github.com/anzhiyu-c/anheyu-app/pkg/util"
 
 	_ "github.com/anzhiyu-c/anheyu-app/ent/runtime"
@@ -121,35 +121,36 @@ import (
 
 // App 结构体，用于封装应用的所有核心组件
 type App struct {
-	cfg                    *config.Config
-	engine                 *gin.Engine
-	taskBroker             *task.Broker
-	sqlDB                  *sql.DB
-	appVersion             string
-	articleService         article_service.Service
-	directLinkService      direct_link.Service
-	storagePolicyRepo      repository.StoragePolicyRepository
-	storagePolicyService   volume.IStoragePolicyService
-	fileService            file_service.FileService
-	mw                     *middleware.Middleware
-	settingRepo            repository.SettingRepository
-	settingSvc             setting.SettingService
-	tokenSvc               auth.TokenService
-	userSvc                user.UserService
-	fileRepo               repository.FileRepository
-	entityRepo             repository.EntityRepository
-	cacheSvc               utility.CacheService
-	eventBus               *event.EventBus
-	postCategorySvc        *post_category_service.Service
-	postTagSvc             *post_tag_service.Service
-	commentSvc             *comment_service.Service
-	themeSvc               theme.ThemeService
-	themeHandler           *theme_handler.Handler
-	ssrManager             *ssr.Manager
-	ssrThemeHandler        *ssrtheme_handler.Handler
-	imageStyleService      image_style.ImageStyleService
-	imageStyleCache        *image_style.DiskCache
-	configExtensionHolder  *configExtensionHolder // Pro 可通过 SetConfigExtension 注入支付配置导出/导入
+	cfg                   *config.Config
+	engine                *gin.Engine
+	taskBroker            *task.Broker
+	sqlDB                 *sql.DB
+	appVersion            string
+	articleService        article_service.Service
+	directLinkService     direct_link.Service
+	storagePolicyRepo     repository.StoragePolicyRepository
+	storagePolicyService  volume.IStoragePolicyService
+	fileService           file_service.FileService
+	mw                    *middleware.Middleware
+	settingRepo           repository.SettingRepository
+	settingSvc            setting.SettingService
+	tokenSvc              auth.TokenService
+	userSvc               user.UserService
+	fileRepo              repository.FileRepository
+	entityRepo            repository.EntityRepository
+	cacheSvc              utility.CacheService
+	eventBus              *event.EventBus
+	postCategorySvc       *post_category_service.Service
+	postTagSvc            *post_tag_service.Service
+	commentSvc            *comment_service.Service
+	searchSvc             *search.SearchService
+	themeSvc              theme.ThemeService
+	themeHandler          *theme_handler.Handler
+	ssrManager            *ssr.Manager
+	ssrThemeHandler       *ssrtheme_handler.Handler
+	imageStyleService     image_style.ImageStyleService
+	imageStyleCache       *image_style.DiskCache
+	configExtensionHolder *configExtensionHolder // Pro 可通过 SetConfigExtension 注入支付配置导出/导入
 }
 
 func (a *App) PrintBanner() {
@@ -394,6 +395,7 @@ func NewAppWithOptions(content embed.FS, opts AppOptions) (*App, func(), error) 
 	}
 
 	searchSvc := search.NewSearchService()
+	searchSvc.RegisterProvider(search.NewAlbumSearchProvider(albumRepo))
 	sitemapSvc := sitemap.NewService(articleRepo, pageRepo, linkRepo, settingSvc)
 
 	// 重建所有文章的搜索索引（分页获取全部文章）
@@ -744,30 +746,31 @@ func NewAppWithOptions(content embed.FS, opts AppOptions) (*App, func(), error) 
 
 	// 将所有初始化好的组件装配到 App 实例中
 	app := &App{
-		cfg:                  cfg,
-		engine:               engine,
-		taskBroker:           taskBroker,
-		sqlDB:                sqlDB,
-		appVersion:           appVersion,
-		articleService:       articleSvc,
-		directLinkService:    directLinkSvc,
-		storagePolicyRepo:    storagePolicyRepo,
-		storagePolicyService: storagePolicySvc,
-		fileService:          fileSvc,
-		mw:                   mw,
-		settingRepo:          settingRepo,
-		settingSvc:           settingSvc,
-		tokenSvc:             tokenSvc,
-		userSvc:              userSvc,
-		fileRepo:             fileRepo,
-		entityRepo:           entityRepo,
-		cacheSvc:             cacheSvc,
-		eventBus:             eventBus,
-		postCategorySvc:      postCategorySvc,
-		postTagSvc:           postTagSvc,
-		commentSvc:           commentSvc,
-		themeSvc:             themeSvc,
-		themeHandler:         themeHandler,
+		cfg:                   cfg,
+		engine:                engine,
+		taskBroker:            taskBroker,
+		sqlDB:                 sqlDB,
+		appVersion:            appVersion,
+		articleService:        articleSvc,
+		directLinkService:     directLinkSvc,
+		storagePolicyRepo:     storagePolicyRepo,
+		storagePolicyService:  storagePolicySvc,
+		fileService:           fileSvc,
+		mw:                    mw,
+		settingRepo:           settingRepo,
+		settingSvc:            settingSvc,
+		tokenSvc:              tokenSvc,
+		userSvc:               userSvc,
+		fileRepo:              fileRepo,
+		entityRepo:            entityRepo,
+		cacheSvc:              cacheSvc,
+		eventBus:              eventBus,
+		postCategorySvc:       postCategorySvc,
+		postTagSvc:            postTagSvc,
+		commentSvc:            commentSvc,
+		searchSvc:             searchSvc,
+		themeSvc:              themeSvc,
+		themeHandler:          themeHandler,
 		ssrManager:            ssrManager,
 		ssrThemeHandler:       ssrThemeHandler,
 		imageStyleService:     imageStyleSvc,
@@ -902,6 +905,14 @@ func (a *App) CommentService() *comment_service.Service {
 // ThemeService 返回主题服务（用于 PRO 版获取主题商城列表）
 func (a *App) ThemeService() theme.ThemeService {
 	return a.themeSvc
+}
+
+// RegisterSearchProvider 允许 Pro 版注入专属公开内容搜索结果。
+func (a *App) RegisterSearchProvider(provider search.SearchProvider) {
+	if a.searchSvc == nil {
+		return
+	}
+	a.searchSvc.RegisterProvider(provider)
 }
 
 // SSRManager 返回 SSR 主题管理器（用于 PRO 版继承 SSR 功能）
