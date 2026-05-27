@@ -225,9 +225,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 	r.registerVersionRoutes(apiGroup)
 	r.registerNotificationRoutes(apiGroup)
 	r.registerConfigBackupRoutes(apiGroup)
-	r.registerSitemapRoutes(engine)     // 直接注册到engine，不使用/api前缀
-	r.registerRSSRoutes(engine)         // RSS/atom/feed 始终注册，与 SkipFrontend 无关
-	r.registerSSRThemeRoutes(apiGroup)  // 注册 SSR 主题管理路由
+	r.registerSitemapRoutes(engine)    // 直接注册到engine，不使用/api前缀
+	r.registerRSSRoutes(engine)        // RSS/atom/feed 始终注册，与 SkipFrontend 无关
+	r.registerSSRThemeRoutes(apiGroup) // 注册 SSR 主题管理路由
 	r.registerImageStyleRoutes(apiGroup)
 }
 
@@ -642,6 +642,7 @@ func (r *Router) registerLinkRoutes(api *gin.RouterGroup) {
 		// 友链管理
 		linksAdmin.POST("", r.linkHandler.AdminCreateLink)                         // POST /api/links
 		linksAdmin.GET("", r.linkHandler.ListLinks)                                // GET /api/links
+		linksAdmin.DELETE("/batch-delete", r.linkHandler.AdminBatchDeleteLinks)    // DELETE /api/links/batch-delete
 		linksAdmin.PUT("/:id", r.linkHandler.AdminUpdateLink)                      // PUT /api/links/:id
 		linksAdmin.DELETE("/:id", r.linkHandler.AdminDeleteLink)                   // DELETE /api/links/:id
 		linksAdmin.PUT("/:id/review", r.linkHandler.ReviewLink)                    // PUT /api/links/:id/review

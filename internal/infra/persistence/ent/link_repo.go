@@ -2,6 +2,7 @@ package ent
 
 import (
 	"context"
+	"strings"
 
 	"github.com/anzhiyu-c/anheyu-app/ent"
 	"github.com/anzhiyu-c/anheyu-app/ent/link"
@@ -234,6 +235,16 @@ func (r *linkRepo) Update(ctx context.Context, id int, req *model.AdminUpdateLin
 
 func (r *linkRepo) Delete(ctx context.Context, id int) error {
 	return r.client.Link.DeleteOneID(id).Exec(ctx)
+}
+
+func (r *linkRepo) HasApplicationByEmail(ctx context.Context, email string) (bool, error) {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return false, nil
+	}
+	return r.client.Link.Query().
+		Where(link.EmailEqualFold(email)).
+		Exist(ctx)
 }
 
 func (r *linkRepo) ListPublic(ctx context.Context, req *model.ListPublicLinksRequest) ([]*model.LinkDTO, int, error) {

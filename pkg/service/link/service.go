@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/anzhiyu-c/anheyu-app/pkg/constant"
 	"github.com/anzhiyu-c/anheyu-app/pkg/domain/model"
 	"github.com/anzhiyu-c/anheyu-app/pkg/domain/repository"
+	"github.com/anzhiyu-c/anheyu-app/pkg/service/captcha"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/setting"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/utility"
 )
@@ -26,7 +28,7 @@ type TaskBroker interface {
 // Service 定义了友链相关的业务逻辑接口。
 type Service interface {
 	// --- 前台接口 ---
-	ApplyLink(ctx context.Context, req *model.ApplyLinkRequest) (*model.LinkDTO, error)
+	ApplyLink(ctx context.Context, req *model.ApplyLinkRequest, clientIP string) (*model.LinkDTO, error)
 	ListPublicLinks(ctx context.Context, req *model.ListPublicLinksRequest) (*model.LinkListResponse, error)
 	ListAllApplications(ctx context.Context, req *model.ListPublicLinksRequest) (*model.LinkListResponse, error) // 获取所有友链申请列表（公开）
 	ListCategories(ctx context.Context) ([]*model.LinkCategoryDTO, error)
@@ -38,6 +40,7 @@ type Service interface {
 	AdminCreateLink(ctx context.Context, req *model.AdminCreateLinkRequest) (*model.LinkDTO, error)
 	AdminUpdateLink(ctx context.Context, id int, req *model.AdminUpdateLinkRequest) (*model.LinkDTO, error)
 	AdminDeleteLink(ctx context.Context, id int) error
+	BatchDeleteLinks(ctx context.Context, req *model.BatchDeleteLinksRequest) (*model.BatchDeleteLinksResponse, error)
 	ReviewLink(ctx context.Context, id int, req *model.ReviewLinkRequest) error
 	UpdateCategory(ctx context.Context, id int, req *model.UpdateLinkCategoryRequest) (*model.LinkCategoryDTO, error)
 	UpdateTag(ctx context.Context, id int, req *model.UpdateLinkTagRequest) (*model.LinkTagDTO, error)
@@ -68,6 +71,8 @@ type service struct {
 	pushooSvc utility.PushooService
 	// 用于发送邮件通知
 	emailSvc utility.EmailService
+	// 用于重复申请人验证码校验
+	captchaSvc captcha.CaptchaService
 	// 事件总线，用于发布友链相关事件
 	eventBus *event.EventBus
 }
@@ -88,6 +93,7 @@ func NewService(
 	settingSvc setting.SettingService,
 	pushooSvc utility.PushooService,
 	emailSvc utility.EmailService,
+	captchaSvc captcha.CaptchaService,
 	eventBus *event.EventBus,
 ) Service {
 	return &service{
@@ -99,6 +105,7 @@ func NewService(
 		settingSvc:       settingSvc,
 		pushooSvc:        pushooSvc,
 		emailSvc:         emailSvc,
+		captchaSvc:       captchaSvc,
 		eventBus:         eventBus,
 	}
 }
@@ -130,7 +137,30 @@ func (s *service) GetRandomLinks(ctx context.Context, num int) ([]*model.LinkDTO
 }
 
 // ApplyLink 处理前台友链申请。
-func (s *service) ApplyLink(ctx context.Context, req *model.ApplyLinkRequest) (*model.LinkDTO, error) {
+func (s *service) ApplyLink(ctx context.Context, req *model.ApplyLinkRequest, clientIP string) (*model.LinkDTO, error) {
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	repeatApplicant, err := s.linkRepo.HasApplicationByEmail(ctx, req.Email)
+	if err != nil {
+		return nil, fmt.Errorf("检查申请人记录失败: %w", err)
+	}
+	if repeatApplicant {
+		if s.captchaSvc == nil {
+			return nil, errors.New("请完成人机验证")
+		}
+		captchaParams := captcha.CaptchaParams{
+			TurnstileToken:       req.TurnstileToken,
+			GeetestLotNumber:     req.GeetestLotNumber,
+			GeetestCaptchaOutput: req.GeetestCaptchaOutput,
+			GeetestPassToken:     req.GeetestPassToken,
+			GeetestGenTime:       req.GeetestGenTime,
+			ImageCaptchaId:       req.ImageCaptchaId,
+			ImageCaptchaAnswer:   req.ImageCaptchaAnswer,
+		}
+		if err := s.captchaSvc.Verify(ctx, captchaParams, clientIP); err != nil {
+			return nil, err
+		}
+	}
+
 	// 检查URL是否已存在
 	exists, err := s.linkRepo.ExistsByURL(ctx, req.URL)
 	if err != nil {
@@ -306,6 +336,48 @@ func (s *service) AdminDeleteLink(ctx context.Context, id int) error {
 		})
 	}
 	return nil
+}
+
+// BatchDeleteLinks 批量删除友链，返回逐项结果。
+func (s *service) BatchDeleteLinks(ctx context.Context, req *model.BatchDeleteLinksRequest) (*model.BatchDeleteLinksResponse, error) {
+	if req == nil || len(req.IDs) == 0 {
+		return nil, errors.New("至少选择一个友链")
+	}
+	const maxBatchDeleteLinks = 100
+	if len(req.IDs) > maxBatchDeleteLinks {
+		return nil, fmt.Errorf("单次最多删除 %d 个友链", maxBatchDeleteLinks)
+	}
+
+	result := &model.BatchDeleteLinksResponse{Total: len(req.IDs)}
+	for _, id := range req.IDs {
+		if id <= 0 {
+			result.Failed++
+			result.FailedList = append(result.FailedList, model.BatchDeleteLinkFailure{
+				ID:     id,
+				Reason: "友链ID无效",
+			})
+			continue
+		}
+		if err := s.linkRepo.Delete(ctx, id); err != nil {
+			result.Failed++
+			result.FailedList = append(result.FailedList, model.BatchDeleteLinkFailure{
+				ID:     id,
+				Reason: err.Error(),
+			})
+			continue
+		}
+
+		result.Success++
+		if s.eventBus != nil {
+			s.eventBus.Publish(event.LinkDeleted, LinkEventPayload{LinkID: id})
+		}
+	}
+
+	if result.Success > 0 && s.broker != nil {
+		s.broker.DispatchLinkCleanup()
+	}
+
+	return result, nil
 }
 
 // ReviewLink 处理友链审核，这是一个简单操作，无需清理。

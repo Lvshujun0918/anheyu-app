@@ -469,9 +469,29 @@ func NewAppWithOptions(content embed.FS, opts AppOptions) (*App, func(), error) 
 	pushooSvc := utility.NewPushooService(settingSvc)
 	log.Printf("[DEBUG] PushooService 初始化完成")
 
-	log.Printf("[DEBUG] 正在初始化 LinkService，将注入 PushooService、EmailService 和 EventBus...")
-	linkSvc := link_service.NewService(linkRepo, linkCategoryRepo, linkTagRepo, txManager, taskBroker, settingSvc, pushooSvc, emailSvc, eventBus)
-	log.Printf("[DEBUG] LinkService 初始化完成，PushooService、EmailService 和 EventBus 已注入")
+	// 初始化 Turnstile 人机验证服务
+	log.Printf("[DEBUG] 正在初始化 TurnstileService...")
+	turnstileSvc := turnstile_service.NewTurnstileService(settingSvc)
+	log.Printf("[DEBUG] TurnstileService 初始化完成")
+
+	// 初始化极验人机验证服务
+	log.Printf("[DEBUG] 正在初始化 GeetestService...")
+	geetestSvc := geetest_service.NewGeetestService(settingSvc)
+	log.Printf("[DEBUG] GeetestService 初始化完成")
+
+	// 初始化图形验证码服务
+	log.Printf("[DEBUG] 正在初始化 ImageCaptchaService...")
+	imageCaptchaSvc := imagecaptcha_service.NewImageCaptchaService(settingSvc, cacheSvc)
+	log.Printf("[DEBUG] ImageCaptchaService 初始化完成")
+
+	// 初始化统一验证服务
+	log.Printf("[DEBUG] 正在初始化 CaptchaService...")
+	captchaSvc := captcha_service.NewCaptchaService(settingSvc, turnstileSvc, geetestSvc, imageCaptchaSvc)
+	log.Printf("[DEBUG] CaptchaService 初始化完成")
+
+	log.Printf("[DEBUG] 正在初始化 LinkService，将注入 PushooService、EmailService、CaptchaService 和 EventBus...")
+	linkSvc := link_service.NewService(linkRepo, linkCategoryRepo, linkTagRepo, txManager, taskBroker, settingSvc, pushooSvc, emailSvc, captchaSvc, eventBus)
+	log.Printf("[DEBUG] LinkService 初始化完成，PushooService、EmailService、CaptchaService 和 EventBus 已注入")
 
 	authSvc := auth.NewAuthService(userRepo, settingSvc, tokenSvc, emailSvc, txManager, articleSvc)
 	log.Printf("[DEBUG] 正在初始化 CommentService，将注入 PushooService 和 NotificationService...")
@@ -503,26 +523,6 @@ func NewAppWithOptions(content embed.FS, opts AppOptions) (*App, func(), error) 
 	configBackupSvc := config_service.NewBackupService("data/backup", configImportExportSvc)
 	taskBroker.SetBackupService(configBackupSvc)
 	log.Printf("[DEBUG] ConfigBackupService 初始化完成")
-
-	// 初始化 Turnstile 人机验证服务
-	log.Printf("[DEBUG] 正在初始化 TurnstileService...")
-	turnstileSvc := turnstile_service.NewTurnstileService(settingSvc)
-	log.Printf("[DEBUG] TurnstileService 初始化完成")
-
-	// 初始化极验人机验证服务
-	log.Printf("[DEBUG] 正在初始化 GeetestService...")
-	geetestSvc := geetest_service.NewGeetestService(settingSvc)
-	log.Printf("[DEBUG] GeetestService 初始化完成")
-
-	// 初始化图形验证码服务
-	log.Printf("[DEBUG] 正在初始化 ImageCaptchaService...")
-	imageCaptchaSvc := imagecaptcha_service.NewImageCaptchaService(settingSvc, cacheSvc)
-	log.Printf("[DEBUG] ImageCaptchaService 初始化完成")
-
-	// 初始化统一验证服务
-	log.Printf("[DEBUG] 正在初始化 CaptchaService...")
-	captchaSvc := captcha_service.NewCaptchaService(settingSvc, turnstileSvc, geetestSvc, imageCaptchaSvc)
-	log.Printf("[DEBUG] CaptchaService 初始化完成")
 
 	// --- Phase 5.5: 初始化 SSR 主题管理器 ---
 	ssrManager := ssr.NewManager("./themes")

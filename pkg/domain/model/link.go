@@ -66,6 +66,14 @@ type ApplyLinkRequest struct {
 	Email        string `json:"email" binding:"required,email"`
 	OriginalURL  string `json:"original_url" binding:"omitempty,url"` // 修改类型时，原友链的URL
 	UpdateReason string `json:"update_reason"`                        // 修改类型时，修改原因说明
+	// 人机验证参数。仅当后端判定为重复申请人时强制校验。
+	TurnstileToken       string `json:"turnstile_token,omitempty"`
+	GeetestLotNumber     string `json:"geetest_lot_number,omitempty"`
+	GeetestCaptchaOutput string `json:"geetest_captcha_output,omitempty"`
+	GeetestPassToken     string `json:"geetest_pass_token,omitempty"`
+	GeetestGenTime       string `json:"geetest_gen_time,omitempty"`
+	ImageCaptchaId       string `json:"image_captcha_id,omitempty"`
+	ImageCaptchaAnswer   string `json:"image_captcha_answer,omitempty"`
 }
 
 // CreateLinkCategoryRequest 是后台管理员创建友链分类的请求结构。
@@ -227,6 +235,25 @@ type LinkSortItem struct {
 // BatchUpdateLinkSortRequest 是批量更新友链排序的请求结构。
 type BatchUpdateLinkSortRequest struct {
 	Items []LinkSortItem `json:"items" binding:"required,min=1"`
+}
+
+// BatchDeleteLinksRequest 是批量删除友链的请求结构。
+type BatchDeleteLinksRequest struct {
+	IDs []int `json:"ids" binding:"required,min=1,max=100,dive,gt=0"`
+}
+
+// BatchDeleteLinkFailure 表示批量删除中单个失败项。
+type BatchDeleteLinkFailure struct {
+	ID     int    `json:"id"`
+	Reason string `json:"reason"`
+}
+
+// BatchDeleteLinksResponse 是批量删除友链的响应结构。
+type BatchDeleteLinksResponse struct {
+	Total      int                      `json:"total"`
+	Success    int                      `json:"success"`
+	Failed     int                      `json:"failed"`
+	FailedList []BatchDeleteLinkFailure `json:"failed_list"`
 }
 
 // ExportLinksRequest 是导出友链的请求结构（与 ListLinksRequest 使用相同的筛选条件）
