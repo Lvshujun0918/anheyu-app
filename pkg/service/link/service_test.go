@@ -6,26 +6,33 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/anzhiyu-c/anheyu-app/internal/pkg/event"
 	"github.com/anzhiyu-c/anheyu-app/pkg/domain/model"
 	"github.com/anzhiyu-c/anheyu-app/pkg/domain/repository"
 	"github.com/anzhiyu-c/anheyu-app/pkg/service/captcha"
 )
 
 type fakeLinkRepository struct {
-	existsByURL      bool
-	hasApplicant     bool
-	deleteErrors     map[int]error
-	created          bool
-	createdEmail     string
-	deletedIDs       []int
-	applicantLookups []string
+	existsByURL        bool
+	hasApplicant       bool
+	deleteErrors       map[int]error
+	created            bool
+	createdEmail       string
+	createdRssURL      string
+	adminCreatedRssURL string
+	updatedRssURL      string
+	linkByID           *model.LinkDTO
+	deletedIDs         []int
+	applicantLookups   []string
 }
 
 func (f *fakeLinkRepository) Create(ctx context.Context, req *model.ApplyLinkRequest, categoryID int) (*model.LinkDTO, error) {
 	f.created = true
 	f.createdEmail = req.Email
-	return &model.LinkDTO{ID: 10, Name: req.Name, URL: req.URL, Email: req.Email}, nil
+	f.createdRssURL = req.RssURL
+	return &model.LinkDTO{ID: 10, Name: req.Name, URL: req.URL, Email: req.Email, RssURL: req.RssURL}, nil
 }
 
 func (f *fakeLinkRepository) List(ctx context.Context, req *model.ListLinksRequest) ([]*model.LinkDTO, int, error) {
@@ -41,11 +48,15 @@ func (f *fakeLinkRepository) UpdateStatus(ctx context.Context, id int, status st
 }
 
 func (f *fakeLinkRepository) GetByID(ctx context.Context, id int) (*model.LinkDTO, error) {
+	if f.linkByID != nil {
+		return f.linkByID, nil
+	}
 	return &model.LinkDTO{ID: id}, nil
 }
 
 func (f *fakeLinkRepository) Update(ctx context.Context, id int, req *model.AdminUpdateLinkRequest) (*model.LinkDTO, error) {
-	return &model.LinkDTO{ID: id}, nil
+	f.updatedRssURL = req.RssURL
+	return &model.LinkDTO{ID: id, URL: req.URL, RssURL: req.RssURL}, nil
 }
 
 func (f *fakeLinkRepository) Delete(ctx context.Context, id int) error {
@@ -57,7 +68,8 @@ func (f *fakeLinkRepository) Delete(ctx context.Context, id int) error {
 }
 
 func (f *fakeLinkRepository) AdminCreate(ctx context.Context, req *model.AdminCreateLinkRequest) (*model.LinkDTO, error) {
-	return &model.LinkDTO{ID: 1}, nil
+	f.adminCreatedRssURL = req.RssURL
+	return &model.LinkDTO{ID: 1, URL: req.URL, RssURL: req.RssURL}, nil
 }
 
 func (f *fakeLinkRepository) GetRandomPublic(ctx context.Context, num int) ([]*model.LinkDTO, error) {
@@ -238,6 +250,17 @@ func validApplyRequest(email string) *model.ApplyLinkRequest {
 	}
 }
 
+func waitLinkEvent(t *testing.T, events <-chan LinkEventPayload) LinkEventPayload {
+	t.Helper()
+	select {
+	case payload := <-events:
+		return payload
+	case <-time.After(2 * time.Second):
+		t.Fatal("等待友链事件超时")
+		return LinkEventPayload{}
+	}
+}
+
 func TestApplyLinkRequiresCaptchaForRepeatApplicant(t *testing.T) {
 	linkRepo := &fakeLinkRepository{hasApplicant: true}
 	captchaSvc := &fakeCaptchaService{err: errors.New("请完成人机验证")}
@@ -279,6 +302,131 @@ func TestApplyLinkSkipsCaptchaForFirstApplicant(t *testing.T) {
 	}
 	if !linkRepo.created {
 		t.Fatal("ApplyLink() did not create link for first applicant")
+	}
+}
+
+func TestApplyLinkPersistsCustomRSSURL(t *testing.T) {
+	linkRepo := &fakeLinkRepository{hasApplicant: false}
+	svc := newTestService(linkRepo, &fakeTaskBroker{}, nil)
+	req := validApplyRequest("rss@example.com")
+	req.RssURL = "https://blog.anheyu.com/atom.xml"
+
+	got, err := svc.ApplyLink(context.Background(), req, "203.0.113.10")
+	if err != nil {
+		t.Fatalf("ApplyLink() error = %v", err)
+	}
+
+	if linkRepo.createdRssURL != req.RssURL {
+		t.Fatalf("repository rss_url = %q, want %q", linkRepo.createdRssURL, req.RssURL)
+	}
+	if got.RssURL != req.RssURL {
+		t.Fatalf("ApplyLink() RssURL = %q, want %q", got.RssURL, req.RssURL)
+	}
+}
+
+func TestAdminCreateLinkPublishesCustomRSSURL(t *testing.T) {
+	linkRepo := &fakeLinkRepository{}
+	bus := event.NewEventBus()
+	t.Cleanup(bus.Shutdown)
+	events := make(chan LinkEventPayload, 1)
+	bus.Subscribe(event.LinkCreated, func(payload interface{}) {
+		if linkPayload, ok := payload.(LinkEventPayload); ok {
+			events <- linkPayload
+		}
+	})
+
+	svc := newTestService(linkRepo, &fakeTaskBroker{}, nil)
+	svc.eventBus = bus
+	req := &model.AdminCreateLinkRequest{
+		Name:       "安知鱼",
+		URL:        "https://blog.anheyu.com",
+		CategoryID: 2,
+		Status:     "APPROVED",
+		RssURL:     "https://blog.anheyu.com/atom.xml",
+	}
+
+	if _, err := svc.AdminCreateLink(context.Background(), req); err != nil {
+		t.Fatalf("AdminCreateLink() error = %v", err)
+	}
+
+	if linkRepo.adminCreatedRssURL != req.RssURL {
+		t.Fatalf("repository rss_url = %q, want %q", linkRepo.adminCreatedRssURL, req.RssURL)
+	}
+	payload := waitLinkEvent(t, events)
+	if payload.RssURL != req.RssURL {
+		t.Fatalf("event rss_url = %q, want %q", payload.RssURL, req.RssURL)
+	}
+}
+
+func TestAdminUpdateLinkPublishesCustomRSSURL(t *testing.T) {
+	linkRepo := &fakeLinkRepository{}
+	bus := event.NewEventBus()
+	t.Cleanup(bus.Shutdown)
+	events := make(chan LinkEventPayload, 1)
+	bus.Subscribe(event.LinkUpdated, func(payload interface{}) {
+		if linkPayload, ok := payload.(LinkEventPayload); ok {
+			events <- linkPayload
+		}
+	})
+
+	svc := newTestService(linkRepo, &fakeTaskBroker{}, nil)
+	svc.eventBus = bus
+	req := &model.AdminUpdateLinkRequest{
+		Name:       "安知鱼",
+		URL:        "https://blog.anheyu.com",
+		CategoryID: 2,
+		Status:     "APPROVED",
+		RssURL:     "https://blog.anheyu.com/feed.xml",
+	}
+
+	if _, err := svc.AdminUpdateLink(context.Background(), 1, req); err != nil {
+		t.Fatalf("AdminUpdateLink() error = %v", err)
+	}
+
+	if linkRepo.updatedRssURL != req.RssURL {
+		t.Fatalf("repository rss_url = %q, want %q", linkRepo.updatedRssURL, req.RssURL)
+	}
+	payload := waitLinkEvent(t, events)
+	if payload.RssURL != req.RssURL {
+		t.Fatalf("event rss_url = %q, want %q", payload.RssURL, req.RssURL)
+	}
+}
+
+func TestReviewLinkPublishesApprovedCustomRSSURL(t *testing.T) {
+	linkRepo := &fakeLinkRepository{
+		linkByID: &model.LinkDTO{
+			ID:       7,
+			Name:     "安知鱼",
+			URL:      "https://blog.anheyu.com",
+			RssURL:   "https://blog.anheyu.com/atom.xml",
+			Category: &model.LinkCategoryDTO{ID: 2, Style: "list"},
+		},
+	}
+	bus := event.NewEventBus()
+	t.Cleanup(bus.Shutdown)
+	events := make(chan LinkEventPayload, 1)
+	bus.Subscribe(event.LinkCreated, func(payload interface{}) {
+		if linkPayload, ok := payload.(LinkEventPayload); ok {
+			events <- linkPayload
+		}
+	})
+
+	svc := newTestService(linkRepo, &fakeTaskBroker{}, nil)
+	svc.eventBus = bus
+
+	if err := svc.ReviewLink(context.Background(), 7, &model.ReviewLinkRequest{Status: "APPROVED"}); err != nil {
+		t.Fatalf("ReviewLink() error = %v", err)
+	}
+
+	payload := waitLinkEvent(t, events)
+	if payload.LinkID != 7 {
+		t.Fatalf("event LinkID = %d, want 7", payload.LinkID)
+	}
+	if payload.LinkURL != linkRepo.linkByID.URL {
+		t.Fatalf("event LinkURL = %q, want %q", payload.LinkURL, linkRepo.linkByID.URL)
+	}
+	if payload.RssURL != linkRepo.linkByID.RssURL {
+		t.Fatalf("event RssURL = %q, want %q", payload.RssURL, linkRepo.linkByID.RssURL)
 	}
 }
 

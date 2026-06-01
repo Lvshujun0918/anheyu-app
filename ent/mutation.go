@@ -15425,6 +15425,7 @@ type LinkMutation struct {
 	id                *int
 	name              *string
 	url               *string
+	rss_url           *string
 	logo              *string
 	description       *string
 	status            *link.Status
@@ -15615,6 +15616,55 @@ func (m *LinkMutation) OldURL(ctx context.Context) (v string, err error) {
 // ResetURL resets all changes to the "url" field.
 func (m *LinkMutation) ResetURL() {
 	m.url = nil
+}
+
+// SetRssURL sets the "rss_url" field.
+func (m *LinkMutation) SetRssURL(s string) {
+	m.rss_url = &s
+}
+
+// RssURL returns the value of the "rss_url" field in the mutation.
+func (m *LinkMutation) RssURL() (r string, exists bool) {
+	v := m.rss_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRssURL returns the old "rss_url" field's value of the Link entity.
+// If the Link object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LinkMutation) OldRssURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRssURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRssURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRssURL: %w", err)
+	}
+	return oldValue.RssURL, nil
+}
+
+// ClearRssURL clears the value of the "rss_url" field.
+func (m *LinkMutation) ClearRssURL() {
+	m.rss_url = nil
+	m.clearedFields[link.FieldRssURL] = struct{}{}
+}
+
+// RssURLCleared returns if the "rss_url" field was cleared in this mutation.
+func (m *LinkMutation) RssURLCleared() bool {
+	_, ok := m.clearedFields[link.FieldRssURL]
+	return ok
+}
+
+// ResetRssURL resets all changes to the "rss_url" field.
+func (m *LinkMutation) ResetRssURL() {
+	m.rss_url = nil
+	delete(m.clearedFields, link.FieldRssURL)
 }
 
 // SetLogo sets the "logo" field.
@@ -16215,12 +16265,15 @@ func (m *LinkMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *LinkMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.name != nil {
 		fields = append(fields, link.FieldName)
 	}
 	if m.url != nil {
 		fields = append(fields, link.FieldURL)
+	}
+	if m.rss_url != nil {
+		fields = append(fields, link.FieldRssURL)
 	}
 	if m.logo != nil {
 		fields = append(fields, link.FieldLogo)
@@ -16264,6 +16317,8 @@ func (m *LinkMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case link.FieldURL:
 		return m.URL()
+	case link.FieldRssURL:
+		return m.RssURL()
 	case link.FieldLogo:
 		return m.Logo()
 	case link.FieldDescription:
@@ -16297,6 +16352,8 @@ func (m *LinkMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldName(ctx)
 	case link.FieldURL:
 		return m.OldURL(ctx)
+	case link.FieldRssURL:
+		return m.OldRssURL(ctx)
 	case link.FieldLogo:
 		return m.OldLogo(ctx)
 	case link.FieldDescription:
@@ -16339,6 +16396,13 @@ func (m *LinkMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetURL(v)
+		return nil
+	case link.FieldRssURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRssURL(v)
 		return nil
 	case link.FieldLogo:
 		v, ok := value.(string)
@@ -16455,6 +16519,9 @@ func (m *LinkMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *LinkMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(link.FieldRssURL) {
+		fields = append(fields, link.FieldRssURL)
+	}
 	if m.FieldCleared(link.FieldLogo) {
 		fields = append(fields, link.FieldLogo)
 	}
@@ -16490,6 +16557,9 @@ func (m *LinkMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *LinkMutation) ClearField(name string) error {
 	switch name {
+	case link.FieldRssURL:
+		m.ClearRssURL()
+		return nil
 	case link.FieldLogo:
 		m.ClearLogo()
 		return nil
@@ -16524,6 +16594,9 @@ func (m *LinkMutation) ResetField(name string) error {
 		return nil
 	case link.FieldURL:
 		m.ResetURL()
+		return nil
+	case link.FieldRssURL:
+		m.ResetRssURL()
 		return nil
 	case link.FieldLogo:
 		m.ResetLogo()

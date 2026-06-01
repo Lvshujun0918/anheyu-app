@@ -437,6 +437,7 @@ var (
 		{Name: "id", Type: field.TypeInt, Increment: true},
 		{Name: "name", Type: field.TypeString, Comment: "网站名称"},
 		{Name: "url", Type: field.TypeString, Comment: "网站链接"},
+		{Name: "rss_url", Type: field.TypeString, Nullable: true, Size: 512, Comment: "自定义 RSS/Atom 订阅地址"},
 		{Name: "logo", Type: field.TypeString, Nullable: true, Comment: "网站头像/Logo"},
 		{Name: "description", Type: field.TypeString, Nullable: true, Comment: "网站介绍"},
 		{Name: "status", Type: field.TypeEnum, Comment: "友链状态", Enums: []string{"PENDING", "APPROVED", "REJECTED", "INVALID"}, Default: "PENDING"},
@@ -458,7 +459,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "links_link_categories_links",
-				Columns:    []*schema.Column{LinksColumns[13]},
+				Columns:    []*schema.Column{LinksColumns[14]},
 				RefColumns: []*schema.Column{LinkCategoriesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},

@@ -81,6 +81,7 @@ type service struct {
 type LinkEventPayload struct {
 	LinkID  int    `json:"link_id"`
 	LinkURL string `json:"link_url,omitempty"`
+	RssURL  string `json:"rss_url,omitempty"`
 }
 
 // NewService 是 service 的构造函数，注入所有依赖。
@@ -298,6 +299,7 @@ func (s *service) AdminCreateLink(ctx context.Context, req *model.AdminCreateLin
 		s.eventBus.Publish(event.LinkCreated, LinkEventPayload{
 			LinkID:  link.ID,
 			LinkURL: link.URL,
+			RssURL:  link.RssURL,
 		})
 	}
 	return link, nil
@@ -316,6 +318,7 @@ func (s *service) AdminUpdateLink(ctx context.Context, id int, req *model.AdminU
 		s.eventBus.Publish(event.LinkUpdated, LinkEventPayload{
 			LinkID:  link.ID,
 			LinkURL: link.URL,
+			RssURL:  link.RssURL,
 		})
 	}
 	return link, nil
@@ -410,27 +413,37 @@ func (s *service) ReviewLink(ctx context.Context, id int, req *model.ReviewLinkR
 		return err
 	}
 
-	// 4. 发送邮件通知（异步，不影响主流程）
+	// 4. 发送事件与邮件通知（异步，不影响主流程）
 	// 只在审核通过或拒绝时发送通知
 	if req.Status == "APPROVED" || req.Status == "REJECTED" {
 		// 重新获取更新后的友链信息（包含最新的 siteshot）
 		updatedLink, err := s.linkRepo.GetByID(ctx, id)
 		if err != nil {
 			log.Printf("[WARNING] 获取更新后的友链信息失败，无法发送邮件通知: %v", err)
-		} else if s.emailSvc != nil {
-			// 异步发送邮件通知
-			go func() {
-				isApproved := req.Status == "APPROVED"
-				rejectReason := ""
-				if req.RejectReason != nil {
-					rejectReason = *req.RejectReason
-				}
-				if err := s.emailSvc.SendLinkReviewNotification(context.Background(), updatedLink, isApproved, rejectReason); err != nil {
-					log.Printf("[ERROR] 发送友链审核邮件通知失败: %v", err)
-				}
-			}()
 		} else {
-			log.Printf("[DEBUG] 邮件服务未初始化，跳过友链审核邮件通知")
+			if req.Status == "APPROVED" && s.eventBus != nil {
+				s.eventBus.Publish(event.LinkCreated, LinkEventPayload{
+					LinkID:  updatedLink.ID,
+					LinkURL: updatedLink.URL,
+					RssURL:  updatedLink.RssURL,
+				})
+			}
+
+			if s.emailSvc != nil {
+				// 异步发送邮件通知
+				go func() {
+					isApproved := req.Status == "APPROVED"
+					rejectReason := ""
+					if req.RejectReason != nil {
+						rejectReason = *req.RejectReason
+					}
+					if err := s.emailSvc.SendLinkReviewNotification(context.Background(), updatedLink, isApproved, rejectReason); err != nil {
+						log.Printf("[ERROR] 发送友链审核邮件通知失败: %v", err)
+					}
+				}()
+			} else {
+				log.Printf("[DEBUG] 邮件服务未初始化，跳过友链审核邮件通知")
+			}
 		}
 	}
 
@@ -660,6 +673,7 @@ func (s *service) ImportLinks(ctx context.Context, req *model.ImportLinksRequest
 			URL:         linkItem.URL,
 			Logo:        linkItem.Logo,
 			Description: linkItem.Description,
+			RssURL:      linkItem.RssURL,
 			CategoryID:  categoryID,
 			TagID:       tagID,
 			Status:      status,
@@ -722,6 +736,7 @@ func (s *service) ExportLinks(ctx context.Context, req *model.ExportLinksRequest
 		exportItem := model.ImportLinkItem{
 			Name:        link.Name,
 			URL:         link.URL,
+			RssURL:      link.RssURL,
 			Logo:        link.Logo,
 			Description: link.Description,
 			Siteshot:    link.Siteshot,

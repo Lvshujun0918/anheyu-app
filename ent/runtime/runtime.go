@@ -514,12 +514,16 @@ func init() {
 	linkDescURL := linkFields[1].Descriptor()
 	// link.URLValidator is a validator for the "url" field. It is called by the builders before save.
 	link.URLValidator = linkDescURL.Validators[0].(func(string) error)
+	// linkDescRssURL is the schema descriptor for rss_url field.
+	linkDescRssURL := linkFields[2].Descriptor()
+	// link.RssURLValidator is a validator for the "rss_url" field. It is called by the builders before save.
+	link.RssURLValidator = linkDescRssURL.Validators[0].(func(string) error)
 	// linkDescSortOrder is the schema descriptor for sort_order field.
-	linkDescSortOrder := linkFields[10].Descriptor()
+	linkDescSortOrder := linkFields[11].Descriptor()
 	// link.DefaultSortOrder holds the default value on creation for the sort_order field.
 	link.DefaultSortOrder = linkDescSortOrder.Default.(int)
 	// linkDescSkipHealthCheck is the schema descriptor for skip_health_check field.
-	linkDescSkipHealthCheck := linkFields[11].Descriptor()
+	linkDescSkipHealthCheck := linkFields[12].Descriptor()
 	// link.DefaultSkipHealthCheck holds the default value on creation for the skip_health_check field.
 	link.DefaultSkipHealthCheck = linkDescSkipHealthCheck.Default.(bool)
 	linkcategoryFields := schema.LinkCategory{}.Fields()

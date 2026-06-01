@@ -39,6 +39,7 @@ type LinkDTO struct {
 	ID              int              `json:"id"`
 	Name            string           `json:"name"`
 	URL             string           `json:"url"`
+	RssURL          string           `json:"rss_url,omitempty"`
 	Logo            string           `json:"logo"`
 	Description     string           `json:"description"`
 	Status          string           `json:"status"`
@@ -60,6 +61,7 @@ type ApplyLinkRequest struct {
 	Type         string `json:"type" binding:"required,oneof=NEW UPDATE"` // 申请类型：NEW-新增友链, UPDATE-修改友链
 	Name         string `json:"name" binding:"required"`
 	URL          string `json:"url" binding:"required,url"`
+	RssURL       string `json:"rss_url" binding:"omitempty,url,max=512"`
 	Logo         string `json:"logo"`
 	Description  string `json:"description"`
 	Siteshot     string `json:"siteshot"` // 网站快照URL，可选字段
@@ -93,6 +95,7 @@ type CreateLinkTagRequest struct {
 type AdminCreateLinkRequest struct {
 	Name            string `json:"name" binding:"required"`
 	URL             string `json:"url" binding:"required,url"`
+	RssURL          string `json:"rss_url" binding:"omitempty,url,max=512"`
 	Logo            string `json:"logo"`
 	Description     string `json:"description"`
 	CategoryID      int    `json:"category_id" binding:"required"`
@@ -145,6 +148,7 @@ type LinkListResponse struct {
 type AdminUpdateLinkRequest struct {
 	Name            string `json:"name" binding:"required"`
 	URL             string `json:"url" binding:"required,url"`
+	RssURL          string `json:"rss_url" binding:"omitempty,url,max=512"`
 	Logo            string `json:"logo"`
 	Description     string `json:"description"`
 	CategoryID      int    `json:"category_id" binding:"required"`
@@ -176,6 +180,7 @@ type UpdateLinkTagRequest struct {
 type ImportLinkItem struct {
 	Name         string `json:"name" binding:"required"`
 	URL          string `json:"url" binding:"required,url"`
+	RssURL       string `json:"rss_url" binding:"omitempty,url,max=512"`
 	Logo         string `json:"logo"`
 	Description  string `json:"description"`
 	Siteshot     string `json:"siteshot"`
