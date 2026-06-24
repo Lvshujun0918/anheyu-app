@@ -7,8 +7,17 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
+)
+
+// staticCache* variables cache the result of IsStaticModeActive() to avoid
+// filesystem I/O (os.Stat, os.ReadDir, os.ReadFile) on every request.
+var (
+	staticCacheMu     sync.RWMutex
+	staticCacheActive bool
+	staticCacheExpiry time.Time
 )
 
 // proxyState holds the reusable reverse proxy and the current target URL.
@@ -79,6 +88,30 @@ func (ps *proxyState) getProxy() *httputil.ReverseProxy {
 	return ps.proxy
 }
 
+// cachedStaticActive returns whether static mode is active, caching the result
+// for 30 seconds to avoid filesystem I/O on every request.
+// The static/ directory is a deploy-time concern — re-checking every 30s is sufficient.
+func cachedStaticActive() bool {
+	now := time.Now()
+	staticCacheMu.RLock()
+	if now.Before(staticCacheExpiry) {
+		active := staticCacheActive
+		staticCacheMu.RUnlock()
+		return active
+	}
+	staticCacheMu.RUnlock()
+
+	staticCacheMu.Lock()
+	defer staticCacheMu.Unlock()
+	// Double-check after acquiring write lock
+	if now.Before(staticCacheExpiry) {
+		return staticCacheActive
+	}
+	staticCacheActive = IsStaticModeActive()
+	staticCacheExpiry = now.Add(30 * time.Second)
+	return staticCacheActive
+}
+
 // ProxyMiddleware creates a reverse proxy middleware that forwards
 // non-API requests to the Next.js frontend service.
 // When a valid static directory is detected (custom frontend mode), public-facing
@@ -103,7 +136,8 @@ func ProxyMiddleware(launcher *Launcher) gin.HandlerFunc {
 
 		// 自定义前端模式：从 static 目录提供前台页面，
 		// 管理后台路径和未找到的静态资源将穿透到 Next.js 代理。
-		if IsStaticModeActive() {
+		// 使用缓存避免每次请求进行文件系统 I/O（30s TTL）。
+		if cachedStaticActive() {
 			if handleStaticRequest(c, path) {
 				return
 			}
