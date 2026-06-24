@@ -6,17 +6,95 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 )
+
+// proxyState holds the reusable reverse proxy and the current target URL.
+// The proxy is created once and reused; only the target URL is updated dynamically.
+type proxyState struct {
+	mu       sync.RWMutex
+	proxy    *httputil.ReverseProxy
+	target   string
+	launcher *Launcher
+}
+
+// newProxyState creates a reusable reverse proxy for the given launcher.
+// The proxy reuses SharedTransport for connection pooling.
+func newProxyState(launcher *Launcher) *proxyState {
+	ps := &proxyState{launcher: launcher}
+
+	// Create the proxy once — Director is called per-request to set the target.
+	ps.proxy = &httputil.ReverseProxy{
+		Transport: SharedTransport,
+		Director: func(req *http.Request) {
+			// Read the current target URL (protected by RLock in the caller)
+			target, _ := url.Parse(ps.target)
+			req.URL.Scheme = target.Scheme
+			req.URL.Host = target.Host
+			req.Host = target.Host
+			req.Header.Set("X-Forwarded-Host", req.Header.Get("X-Forwarded-Host"))
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, proxyErr error) {
+			log.Printf("[Frontend Proxy] 代理错误: %v (target: %s)", proxyErr, ps.launcher.GetFrontendURL())
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>前端服务暂不可用</title>
+<style>body{font-family:system-ui,sans-serif;text-align:center;padding:60px}h1{color:#333}p{color:#666}</style>
+</head><body>
+<h1>前端服务暂时不可用</h1>
+<p>服务正在启动中或遇到问题，请稍后刷新页面重试。</p>
+</body></html>`))
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			// Add immutable caching for content-hashed Next.js static assets
+			path := resp.Request.URL.Path
+			if strings.HasPrefix(path, "/_next/static/") {
+				resp.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
+			}
+			return nil
+		},
+	}
+
+	// Set initial target
+	ps.target = launcher.GetFrontendURL()
+
+	return ps
+}
+
+// getProxy returns the shared reverse proxy, updating the target URL if needed.
+func (ps *proxyState) getProxy() *httputil.ReverseProxy {
+	ps.mu.RLock()
+	currentTarget := ps.target
+	ps.mu.RUnlock()
+
+	newTarget := ps.launcher.GetFrontendURL()
+	if newTarget != currentTarget {
+		ps.mu.Lock()
+		ps.target = newTarget
+		ps.mu.Unlock()
+	}
+
+	return ps.proxy
+}
 
 // ProxyMiddleware creates a reverse proxy middleware that forwards
 // non-API requests to the Next.js frontend service.
 // When a valid static directory is detected (custom frontend mode), public-facing
 // pages are served from it; admin pages still proxy to Next.js.
 func ProxyMiddleware(launcher *Launcher) gin.HandlerFunc {
+	// Create the reusable proxy once at middleware creation time
+	state := newProxyState(launcher)
+
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
+
+		// Set immutable cache headers for content-hashed static assets
+		// even before proxying (handles edge cases where ModifyResponse might not fire)
+		if strings.HasPrefix(path, "/_next/static/") {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		}
 
 		if shouldSkipProxy(path, launcher.SkipStaticProxy()) {
 			c.Next()
@@ -36,37 +114,17 @@ func ProxyMiddleware(launcher *Launcher) gin.HandlerFunc {
 			return
 		}
 
-		target, err := url.Parse(launcher.GetFrontendURL())
-		if err != nil {
-			log.Printf("[Frontend Proxy] URL 解析失败: %v", err)
-			c.Next()
-			return
-		}
+		// Set per-request proxy headers before forwarding
+		originalHost := c.Request.Host
+		originalScheme := scheme(c)
+		originalIP := c.ClientIP()
 
-		proxy := httputil.NewSingleHostReverseProxy(target)
+		// Set headers on the incoming request so the proxy's Director can forward them
+		c.Request.Header.Set("X-Forwarded-Host", originalHost)
+		c.Request.Header.Set("X-Forwarded-Proto", originalScheme)
+		c.Request.Header.Set("X-Real-IP", originalIP)
 
-		originalDirector := proxy.Director
-		proxy.Director = func(req *http.Request) {
-			originalDirector(req)
-			req.Host = req.URL.Host
-			req.Header.Set("X-Forwarded-Host", c.Request.Host)
-			req.Header.Set("X-Forwarded-Proto", scheme(c))
-			req.Header.Set("X-Real-IP", c.ClientIP())
-		}
-
-		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, proxyErr error) {
-			log.Printf("[Frontend Proxy] 代理错误: %v (target: %s)", proxyErr, launcher.GetFrontendURL())
-			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>前端服务暂不可用</title>
-<style>body{font-family:system-ui,sans-serif;text-align:center;padding:60px}h1{color:#333}p{color:#666}</style>
-</head><body>
-<h1>前端服务暂时不可用</h1>
-<p>服务正在启动中或遇到问题，请稍后刷新页面重试。</p>
-</body></html>`))
-		}
-
-		proxy.ServeHTTP(c.Writer, c.Request)
+		state.getProxy().ServeHTTP(c.Writer, c.Request)
 		c.Abort()
 	}
 }
