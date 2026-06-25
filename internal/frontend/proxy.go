@@ -148,6 +148,16 @@ func ProxyMiddleware(launcher *Launcher) gin.HandlerFunc {
 			return
 		}
 
+		// 页面响应缓存：先尝试从缓存中直接返回，跳过 Next.js SSR 全过程
+		// 仅对公开 GET 请求生效，管理后台/API/登录等路径不缓存
+		if tryServeFromCache(c.Writer, c.Request) {
+			c.Abort()
+			return
+		}
+
+		// 包装 ResponseWriter 以捕获响应内容用于后续缓存
+		cacheRW, storeCache := wrapForCaching(c.Writer, c.Request)
+
 		// Set per-request proxy headers before forwarding
 		originalHost := c.Request.Host
 		originalScheme := scheme(c)
@@ -158,7 +168,8 @@ func ProxyMiddleware(launcher *Launcher) gin.HandlerFunc {
 		c.Request.Header.Set("X-Forwarded-Proto", originalScheme)
 		c.Request.Header.Set("X-Real-IP", originalIP)
 
-		state.getProxy().ServeHTTP(c.Writer, c.Request)
+		state.getProxy().ServeHTTP(cacheRW, c.Request)
+		storeCache()
 		c.Abort()
 	}
 }
