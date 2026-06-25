@@ -207,6 +207,7 @@ func (r *articleRepo) CountByCategoryWithMultipleCategories(ctx context.Context,
 }
 
 // getAdjacentArticle 是一个通用的辅助函数，用于获取上一篇或下一篇文章。
+// 仅选择展示所需的列，避免加载 ContentMd/ContentHTML 等大字段。
 func (r *articleRepo) getAdjacentArticle(ctx context.Context, currentArticleID uint, createdAt time.Time, isPrev bool) (*model.Article, error) {
 	query := r.db.Article.Query().
 		Where(
@@ -223,7 +224,16 @@ func (r *articleRepo) getAdjacentArticle(ctx context.Context, currentArticleID u
 			Order(ent.Asc(article.FieldCreatedAt), ent.Asc(article.FieldID))
 	}
 
-	entity, err := query.WithPostTags().WithPostCategories().First(ctx)
+	entity, err := query.
+		Select(
+			article.FieldID, article.FieldTitle, article.FieldAbbrlink,
+			article.FieldCoverURL, article.FieldCreatedAt, article.FieldUpdatedAt,
+			article.FieldStatus, article.FieldViewCount, article.FieldCommentCount,
+			article.FieldOwnerID, article.FieldCategoryID,
+		).
+		WithPostTags().
+		WithPostCategories().
+		First(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, nil // 未找到是正常情况
@@ -335,6 +345,12 @@ func (r *articleRepo) FindRelatedArticles(ctx context.Context, articleModel *mod
 			article.StatusEQ(article.StatusPUBLISHED),
 			article.DeletedAtIsNil(),
 			relationPredicate,
+		).
+		Select(
+			article.FieldID, article.FieldTitle, article.FieldAbbrlink,
+			article.FieldCoverURL, article.FieldCreatedAt, article.FieldUpdatedAt,
+			article.FieldStatus, article.FieldViewCount, article.FieldCommentCount,
+			article.FieldOwnerID, article.FieldCategoryID,
 		).
 		WithPostTags().
 		WithPostCategories().
@@ -972,34 +988,34 @@ func (r *articleRepo) GetByID(ctx context.Context, publicID string) (*model.Arti
 	return r.toModel(entity)
 }
 
-// GetRandom 获取一篇随机文章
+// GetRandom 获取一篇随机文章（使用数据库级随机排序，避免获取全部 ID）
 func (r *articleRepo) GetRandom(ctx context.Context) (*model.Article, error) {
-	ids, err := r.db.Article.Query().
+	// 根据数据库类型选择随机函数
+	randFunc := "RAND()"
+	if r.dbType == "postgres" || r.dbType == "postgresql" || r.dbType == "pg" {
+		randFunc = "RANDOM()"
+	}
+
+	entity, err := r.db.Article.Query().
 		Where(
 			article.StatusEQ(article.StatusPUBLISHED),
 			article.DeletedAtIsNil(),
-			article.IsTakedownEQ(false), // 过滤下架文章
+			article.IsTakedownEQ(false),
 		).
-		IDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(ids) == 0 {
-		return nil, constant.ErrNotFound
-	}
-	source := rand.NewSource(time.Now().UnixNano())
-	random := rand.New(source)
-	randomID := ids[random.Intn(len(ids))]
-
-	fullArticle, err := r.db.Article.Query().
-		Where(article.ID(randomID)).
+		Order(func(s *sql.Selector) {
+			s.OrderBy(sql.Expr(randFunc))
+		}).
+		Limit(1).
 		WithPostTags().
 		WithPostCategories().
 		Only(ctx)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, constant.ErrNotFound
+		}
 		return nil, err
 	}
-	return r.toModel(fullArticle)
+	return r.toModel(entity)
 }
 
 // Delete 软删除文章
