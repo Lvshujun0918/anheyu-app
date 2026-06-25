@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -228,8 +227,8 @@ func (r *articleRepo) getAdjacentArticle(ctx context.Context, currentArticleID u
 		Select(
 			article.FieldID, article.FieldTitle, article.FieldAbbrlink,
 			article.FieldCoverURL, article.FieldCreatedAt, article.FieldUpdatedAt,
-			article.FieldStatus, article.FieldViewCount, article.FieldCommentCount,
-			article.FieldOwnerID, article.FieldCategoryID,
+			article.FieldStatus, article.FieldViewCount, 
+			article.FieldOwnerID, 
 		).
 		WithPostTags().
 		WithPostCategories().
@@ -349,8 +348,8 @@ func (r *articleRepo) FindRelatedArticles(ctx context.Context, articleModel *mod
 		Select(
 			article.FieldID, article.FieldTitle, article.FieldAbbrlink,
 			article.FieldCoverURL, article.FieldCreatedAt, article.FieldUpdatedAt,
-			article.FieldStatus, article.FieldViewCount, article.FieldCommentCount,
-			article.FieldOwnerID, article.FieldCategoryID,
+			article.FieldStatus, article.FieldViewCount, 
+			article.FieldOwnerID, 
 		).
 		WithPostTags().
 		WithPostCategories().
@@ -1003,7 +1002,7 @@ func (r *articleRepo) GetRandom(ctx context.Context) (*model.Article, error) {
 			article.IsTakedownEQ(false),
 		).
 		Order(func(s *sql.Selector) {
-			s.OrderBy(sql.Expr(randFunc))
+			s.OrderBy(randFunc)
 		}).
 		Limit(1).
 		WithPostTags().
