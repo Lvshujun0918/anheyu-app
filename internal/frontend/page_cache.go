@@ -131,10 +131,10 @@ func (pc *pageCache) set(key string, body []byte, header http.Header, statusCode
 	pc.mu.Unlock()
 }
 
-// buildPageCacheKey builds a cache key from the request.
-// Uses path only (public pages don't vary by user).
+// buildPageCacheKey builds a cache key from the full request URI.
+// Public pages can vary by query parameters such as album filters.
 func buildPageCacheKey(r *http.Request) string {
-	return r.URL.Path
+	return r.URL.RequestURI()
 }
 
 // tryServeFromCache attempts to serve the request from the page cache.

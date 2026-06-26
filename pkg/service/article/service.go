@@ -10,7 +10,6 @@ import (
 	"math"
 	"net/http"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -478,36 +477,20 @@ func (s *serviceImpl) GetArticleStatistics(ctx context.Context) (*model.ArticleS
 		}
 	}
 
-	// 4. 获取已发布文章（按浏览量排序获取前10热门）
-	allArticles, _, err := s.repo.List(ctx, &model.ListArticlesOptions{
-		Page:     1,
-		PageSize: 500,
-		Status:   "PUBLISHED",
-	})
+	// 4. 获取公开文章浏览统计
+	totalViews, err := s.repo.GetTotalPublicViews(ctx)
 	if err != nil {
-		log.Printf("[GetArticleStatistics] 获取文章列表失败: %v", err)
+		log.Printf("[GetArticleStatistics] 获取文章总浏览量失败: %v", err)
 	} else {
-		// 计算总浏览量
-		totalViews := 0
-		for _, article := range allArticles {
-			totalViews += article.ViewCount
-		}
 		stats.TotalViews = totalViews
+	}
 
-		// 按浏览量排序获取热门文章
-		topN := 10
-		if len(allArticles) < topN {
-			topN = len(allArticles)
-		}
-
-		// 使用内置排序（O(n log n)）替换冒泡排序（O(n²)）
-		sort.Slice(allArticles, func(i, j int) bool {
-			return allArticles[i].ViewCount > allArticles[j].ViewCount
-		})
-
-		stats.TopViewedPosts = make([]model.TopViewedPostItem, 0, topN)
-		for i := 0; i < topN; i++ {
-			article := allArticles[i]
+	topViewedArticles, err := s.repo.GetTopViewedPublicArticles(ctx, 10)
+	if err != nil {
+		log.Printf("[GetArticleStatistics] 获取热门文章失败: %v", err)
+	} else {
+		stats.TopViewedPosts = make([]model.TopViewedPostItem, 0, len(topViewedArticles))
+		for _, article := range topViewedArticles {
 			stats.TopViewedPosts = append(stats.TopViewedPosts, model.TopViewedPostItem{
 				ID:       article.ID,
 				Title:    article.Title,

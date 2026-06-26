@@ -52,6 +52,12 @@ type ArticleRepository interface {
 	// GetSiteStats 获取站点统计信息，如文章总数、总字数等。
 	GetSiteStats(ctx context.Context) (*model.SiteStats, error)
 
+	// GetTotalPublicViews 获取公开文章的总浏览量。
+	GetTotalPublicViews(ctx context.Context) (int, error)
+
+	// GetTopViewedPublicArticles 获取公开文章中浏览量最高的文章。
+	GetTopViewedPublicArticles(ctx context.Context, limit int) ([]*model.Article, error)
+
 	// IncrementViewCount 增加文章的查看次数。
 	IncrementViewCount(ctx context.Context, publicID string) error
 

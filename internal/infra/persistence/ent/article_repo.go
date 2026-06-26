@@ -159,6 +159,18 @@ func (r *articleRepo) toModelSlice(entities []*ent.Article) ([]*model.Article, e
 	return models, nil
 }
 
+func publicArticlePredicates() []predicate.Article {
+	return []predicate.Article{
+		article.StatusEQ(article.StatusPUBLISHED),
+		article.DeletedAtIsNil(),
+		article.IsTakedownEQ(false),
+		article.Or(
+			article.ReviewStatusEQ(article.ReviewStatusAPPROVED),
+			article.ReviewStatusEQ(article.ReviewStatusNONE),
+		),
+	}
+}
+
 // CountByCategoryWithMultipleCategories 计算有多少文章既属于目标分类，又同时属于其他分类。
 // 此方法使用 JOIN 和 HAVING 子句，是处理此类聚合过滤的高效方案。
 func (r *articleRepo) CountByCategoryWithMultipleCategories(ctx context.Context, categoryID uint) (int, error) {
@@ -227,8 +239,8 @@ func (r *articleRepo) getAdjacentArticle(ctx context.Context, currentArticleID u
 		Select(
 			article.FieldID, article.FieldTitle, article.FieldAbbrlink,
 			article.FieldCoverURL, article.FieldCreatedAt, article.FieldUpdatedAt,
-			article.FieldStatus, article.FieldViewCount, 
-			article.FieldOwnerID, 
+			article.FieldStatus, article.FieldViewCount,
+			article.FieldOwnerID,
 		).
 		WithPostTags().
 		WithPostCategories().
@@ -348,8 +360,8 @@ func (r *articleRepo) FindRelatedArticles(ctx context.Context, articleModel *mod
 		Select(
 			article.FieldID, article.FieldTitle, article.FieldAbbrlink,
 			article.FieldCoverURL, article.FieldCreatedAt, article.FieldUpdatedAt,
-			article.FieldStatus, article.FieldViewCount, 
-			article.FieldOwnerID, 
+			article.FieldStatus, article.FieldViewCount,
+			article.FieldOwnerID,
 		).
 		WithPostTags().
 		WithPostCategories().
@@ -453,6 +465,48 @@ func (r *articleRepo) GetSiteStats(ctx context.Context) (*model.SiteStats, error
 	}
 
 	return &model.SiteStats{TotalPosts: totalPosts, TotalWords: totalWords}, nil
+}
+
+// GetTotalPublicViews 获取公开文章的总浏览量。
+func (r *articleRepo) GetTotalPublicViews(ctx context.Context) (int, error) {
+	var rows []struct {
+		Sum int `json:"sum"`
+	}
+	if err := r.db.Article.Query().
+		Where(publicArticlePredicates()...).
+		Aggregate(ent.Sum(article.FieldViewCount)).
+		Scan(ctx, &rows); err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	return rows[0].Sum, nil
+}
+
+// GetTopViewedPublicArticles 获取公开文章中浏览量最高的文章。
+func (r *articleRepo) GetTopViewedPublicArticles(ctx context.Context, limit int) ([]*model.Article, error) {
+	if limit <= 0 {
+		return []*model.Article{}, nil
+	}
+	entities, err := r.db.Article.Query().
+		Where(publicArticlePredicates()...).
+		Order(ent.Desc(article.FieldViewCount), ent.Desc(article.FieldCreatedAt), ent.Desc(article.FieldID)).
+		Limit(limit).
+		Select(
+			article.FieldID,
+			article.FieldCreatedAt,
+			article.FieldUpdatedAt,
+			article.FieldTitle,
+			article.FieldCoverURL,
+			article.FieldStatus,
+			article.FieldViewCount,
+		).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return r.toModelSlice(entities)
 }
 
 // UpdateViewCounts 批量更新文章的浏览量
@@ -774,16 +828,7 @@ func (r *articleRepo) Update(ctx context.Context, publicID string, req *model.Up
 // ListPublic 获取公开的文章列表
 func (r *articleRepo) ListPublic(ctx context.Context, options *model.ListPublicArticlesOptions) ([]*model.Article, int, error) {
 	// 基础查询条件：已发布、未删除、未下架、且审核通过（或无需审核）
-	baseQuery := r.db.Article.Query().Where(
-		article.StatusEQ(article.StatusPUBLISHED),
-		article.DeletedAtIsNil(),
-		article.IsTakedownEQ(false), // 过滤下架文章
-		// 只显示审核通过或无需审核的文章
-		article.Or(
-			article.ReviewStatusEQ(article.ReviewStatusAPPROVED),
-			article.ReviewStatusEQ(article.ReviewStatusNONE),
-		),
-	)
+	baseQuery := r.db.Article.Query().Where(publicArticlePredicates()...)
 
 	// 只在普通列表（没有指定分类、标签、年份、月份）时应用 show_on_home 过滤
 	// 分类页、标签页、归档页应该显示所有文章
