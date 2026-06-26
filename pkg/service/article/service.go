@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -477,10 +478,10 @@ func (s *serviceImpl) GetArticleStatistics(ctx context.Context) (*model.ArticleS
 		}
 	}
 
-	// 4. 获取所有已发布文章，然后手动排序获取热门文章
+	// 4. 获取已发布文章（按浏览量排序获取前10热门）
 	allArticles, _, err := s.repo.List(ctx, &model.ListArticlesOptions{
 		Page:     1,
-		PageSize: 10000, // 获取足够多的文章
+		PageSize: 500,
 		Status:   "PUBLISHED",
 	})
 	if err != nil {
@@ -494,32 +495,19 @@ func (s *serviceImpl) GetArticleStatistics(ctx context.Context) (*model.ArticleS
 		stats.TotalViews = totalViews
 
 		// 按浏览量排序获取热门文章
-		// 使用简单的冒泡排序找出前10
 		topN := 10
 		if len(allArticles) < topN {
 			topN = len(allArticles)
 		}
 
-		// 创建副本并按浏览量排序
-		sortedArticles := make([]*model.Article, len(allArticles))
-		copy(sortedArticles, allArticles)
-
-		// 简单排序获取前10
-		for i := 0; i < topN && i < len(sortedArticles)-1; i++ {
-			maxIdx := i
-			for j := i + 1; j < len(sortedArticles); j++ {
-				if sortedArticles[j].ViewCount > sortedArticles[maxIdx].ViewCount {
-					maxIdx = j
-				}
-			}
-			if maxIdx != i {
-				sortedArticles[i], sortedArticles[maxIdx] = sortedArticles[maxIdx], sortedArticles[i]
-			}
-		}
+		// 使用内置排序（O(n log n)）替换冒泡排序（O(n²)）
+		sort.Slice(allArticles, func(i, j int) bool {
+			return allArticles[i].ViewCount > allArticles[j].ViewCount
+		})
 
 		stats.TopViewedPosts = make([]model.TopViewedPostItem, 0, topN)
 		for i := 0; i < topN; i++ {
-			article := sortedArticles[i]
+			article := allArticles[i]
 			stats.TopViewedPosts = append(stats.TopViewedPosts, model.TopViewedPostItem{
 				ID:       article.ID,
 				Title:    article.Title,
