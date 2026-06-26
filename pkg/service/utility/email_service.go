@@ -417,7 +417,7 @@ func (s *emailService) SendForgotPasswordEmail(ctx context.Context, toEmail, nic
 	}
 	siteURL = strings.TrimRight(siteURL, "/")
 
-	resetLink := fmt.Sprintf("%s/login/reset?id=%s&sign=%s", siteURL, userID, sign)
+	resetLink := buildResetPasswordLink(siteURL, userID, sign)
 	data := map[string]string{
 		"Nickname":  nickname,
 		"AppName":   appName,
@@ -435,6 +435,11 @@ func (s *emailService) SendForgotPasswordEmail(ctx context.Context, toEmail, nic
 
 	go func() { _ = s.send(toEmail, subject, body) }()
 	return nil
+}
+
+func buildResetPasswordLink(siteURL, userID, sign string) string {
+	siteURL = strings.TrimRight(siteURL, "/")
+	return fmt.Sprintf("%s/forgot-password?id=%s&sign=%s", siteURL, userID, sign)
 }
 
 // SendLinkReviewNotification 负责发送友链审核通知邮件
