@@ -150,7 +150,7 @@ func NewService(settingSvc setting.SettingService, bus *event.EventBus) *Service
 	policy.AllowAttrs("data-type").Matching(regexp.MustCompile(`^(math-block|math-inline)$`)).OnElements("div", "span")
 
 	// 视频画廊相关属性
-	policy.AllowAttrs("src", "poster", "controls", "preload", "playsinline", "type").OnElements("video")
+	policy.AllowAttrs("src", "poster", "controls", "preload", "playsinline", "webkit-playsinline", "x5-playsinline", "x5-video-player-type", "type").OnElements("video")
 	policy.AllowAttrs("src", "type").OnElements("source")
 
 	// 图片画廊相关属性
