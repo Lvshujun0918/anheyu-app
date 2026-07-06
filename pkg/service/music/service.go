@@ -104,7 +104,7 @@ type musicService struct {
 // NewMusicService 创建新的音乐服务
 func NewMusicService(settingSvc setting.SettingService) MusicService {
 	// 从配置获取音乐API基础地址
-	apiBaseURL := settingSvc.Get(constant.KeyMusicAPIBaseURL.String())
+	apiBaseURL := normalizeAPIBaseURL(settingSvc.Get(constant.KeyMusicAPIBaseURL.String()))
 	if apiBaseURL == "" {
 		apiBaseURL = "https://metings.qjqq.cn"
 	}
@@ -121,11 +121,19 @@ func NewMusicService(settingSvc setting.SettingService) MusicService {
 	return &musicService{
 		settingSvc:       settingSvc,
 		httpClient:       &http.Client{Timeout: 15 * time.Second, Transport: transport},
-		playlistAPI:      apiBaseURL + "/Playlist",
-		songAPI:          apiBaseURL + "/Song_V1",
+		playlistAPI:      buildMusicAPIURL(apiBaseURL, "Playlist"),
+		songAPI:          buildMusicAPIURL(apiBaseURL, "Song_V1"),
 		picUrlCache:      sync.Map{},
 		concurrencyLimit: 20, // 限制并发数量为20
 	}
+}
+
+func normalizeAPIBaseURL(apiBaseURL string) string {
+	return strings.TrimRight(strings.TrimSpace(apiBaseURL), "/")
+}
+
+func buildMusicAPIURL(apiBaseURL, endpoint string) string {
+	return normalizeAPIBaseURL(apiBaseURL) + "/" + strings.TrimLeft(endpoint, "/")
 }
 
 // logRequest 记录请求日志

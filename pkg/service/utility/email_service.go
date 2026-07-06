@@ -112,7 +112,7 @@ func (s *emailService) SendLinkApplicationNotification(ctx context.Context, link
 	}
 	siteURL = strings.TrimRight(siteURL, "/")
 
-	adminURL := fmt.Sprintf("%s/admin/flink-management", siteURL)
+	adminURL := buildFriendLinkAdminURL(siteURL)
 
 	subjectTpl := s.settingSvc.Get(constant.KeyFriendLinkMailSubjectAdmin.String())
 	if subjectTpl == "" {
@@ -440,6 +440,11 @@ func (s *emailService) SendForgotPasswordEmail(ctx context.Context, toEmail, nic
 func buildResetPasswordLink(siteURL, userID, sign string) string {
 	siteURL = strings.TrimRight(siteURL, "/")
 	return fmt.Sprintf("%s/forgot-password?id=%s&sign=%s", siteURL, userID, sign)
+}
+
+func buildFriendLinkAdminURL(siteURL string) string {
+	siteURL = strings.TrimRight(siteURL, "/")
+	return fmt.Sprintf("%s/admin/friends", siteURL)
 }
 
 // SendLinkReviewNotification 负责发送友链审核通知邮件

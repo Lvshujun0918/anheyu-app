@@ -10,3 +10,12 @@ func TestBuildResetPasswordLinkUsesForgotPasswordRoute(t *testing.T) {
 		t.Fatalf("reset link = %q, want %q", got, want)
 	}
 }
+
+func TestBuildFriendLinkAdminURLUsesCurrentAdminFriendsRoute(t *testing.T) {
+	got := buildFriendLinkAdminURL("https://example.com/")
+	want := "https://example.com/admin/friends"
+
+	if got != want {
+		t.Fatalf("friend link admin URL = %q, want %q", got, want)
+	}
+}
