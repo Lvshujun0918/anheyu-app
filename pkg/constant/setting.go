@@ -80,6 +80,26 @@ const (
 	KeyBuiltinMaxFileSize             SettingKey = "BUILTIN_MAX_FILE_SIZE"
 	KeyBuiltinDirectServeExts         SettingKey = "BUILTIN_DIRECT_SERVE_EXTS"
 
+	// --- 上传时自动压缩与格式转换 ---
+	// KeyUploadAutoCompressEnabled 上传时是否自动压缩图片
+	KeyUploadAutoCompressEnabled SettingKey = "UPLOAD_AUTO_COMPRESS_ENABLED"
+	// KeyUploadAutoCompressQuality 自动压缩质量 (1-100)，默认 85
+	KeyUploadAutoCompressQuality SettingKey = "UPLOAD_AUTO_COMPRESS_QUALITY"
+	// KeyUploadAutoCompressMaxWidth 自动压缩最大宽度（像素），0 表示不限制
+	KeyUploadAutoCompressMaxWidth SettingKey = "UPLOAD_AUTO_COMPRESS_MAX_WIDTH"
+	// KeyUploadAutoCompressMaxHeight 自动压缩最大高度（像素），0 表示不限制
+	KeyUploadAutoCompressMaxHeight SettingKey = "UPLOAD_AUTO_COMPRESS_MAX_HEIGHT"
+	// KeyUploadAutoFormatConvertEnabled 上传时是否自动转换图片格式
+	KeyUploadAutoFormatConvertEnabled SettingKey = "UPLOAD_AUTO_FORMAT_CONVERT_ENABLED"
+	// KeyUploadAutoFormatTarget 自动转换目标格式：webp / avif / jpg
+	KeyUploadAutoFormatTarget SettingKey = "UPLOAD_AUTO_FORMAT_TARGET"
+	// KeyUploadAutoFormatSourceExts 需要转换的源格式扩展名列表（逗号分隔，不含点），默认 "jpg,jpeg,png"
+	KeyUploadAutoFormatSourceExts SettingKey = "UPLOAD_AUTO_FORMAT_SOURCE_EXTS"
+	// KeyUploadAutoProcessMinSize 最小处理文件大小（字节），小于此大小的图片跳过处理，默认 10240 (10KB)
+	KeyUploadAutoProcessMinSize SettingKey = "UPLOAD_AUTO_PROCESS_MIN_SIZE"
+	// KeyUploadAutoProcessImageExts 需要处理的图片扩展名列表（逗号分隔，不含点），默认 "jpg,jpeg,png,webp,gif,bmp"
+	KeyUploadAutoProcessImageExts SettingKey = "UPLOAD_AUTO_PROCESS_IMAGE_EXTS"
+
 	KeyFrontDeskSiteOwnerName  SettingKey = "frontDesk.siteOwner.name"
 	KeyFrontDeskSiteOwnerEmail SettingKey = "frontDesk.siteOwner.email"
 

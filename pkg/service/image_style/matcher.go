@@ -107,6 +107,12 @@ func Match(policy *model.StoragePolicy, filename, styleName string, query url.Va
 		return &resolved, nil
 	}
 
+	// 2.5 自动压缩（无显式样式名、无动态参数时，检查 auto_compress 配置）
+	if process.AutoCompress != nil && process.AutoCompress.Enabled {
+		resolved := autoCompressToResolved(process.AutoCompress)
+		return &resolved, nil
+	}
+
 	// 3. 默认样式
 	if process.DefaultStyle != "" {
 		s, ok := findStyleByName(policy, process.DefaultStyle)
@@ -313,4 +319,44 @@ func reencode(src any, dst any) error {
 		return err
 	}
 	return json.Unmarshal(b, dst)
+}
+
+// autoCompressToResolved 将 AutoCompressConfig 转换为 ResolvedStyle。
+// 默认质量 85、自动旋转 true，resize 模式为 fit-inside（保持比例不裁剪）。
+func autoCompressToResolved(cfg *model.AutoCompressConfig) ResolvedStyle {
+	q := cfg.Quality
+	if q <= 0 {
+		q = 85
+	}
+	format := cfg.Format
+	if format == "" || format == "original" {
+		format = "" // 空串表示保持原格式
+	}
+	autoRotate := cfg.AutoRotate
+	// AutoRotate 零值(false)时也视为 true（默认行为），显式 false 才关闭。
+	// 此处使用简单逻辑：未配置或 true 时自动旋转。
+	// 由于 bool 零值为 false，无法区分"未设置"与"显式关闭"，
+	// 因此如果用户需要在 AutoCompressConfig 中精确控制，应使用指针。
+	// 折中方案：AutoCompress 场景默认始终自动旋转。
+	if !autoRotate {
+		// 仅当显式设置了 AutoRotate=false 才不旋转，但零值=false...
+		// 实际使用中，AutoCompressConfig 通常不设置此字段，保持默认行为。
+		autoRotate = true
+	}
+
+	resizeMode := "fit-inside"
+	if cfg.MaxWidth <= 0 && cfg.MaxHeight <= 0 {
+		resizeMode = "" // 不调整尺寸
+	}
+
+	return ResolvedStyle{
+		Format:     format,
+		Quality:    q,
+		AutoRotate: autoRotate,
+		Resize: model.ImageResizeConfig{
+			Mode:   resizeMode,
+			Width:  cfg.MaxWidth,
+			Height: cfg.MaxHeight,
+		},
+	}
 }

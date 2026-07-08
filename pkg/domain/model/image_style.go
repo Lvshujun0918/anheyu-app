@@ -26,6 +26,28 @@ type ImageProcessConfig struct {
 	// DefaultStyle 上传返回 URL 时自动拼接的默认样式名；空串表示不自动拼接。
 	// 非空时必须存在于 ImageStyles[].Name。
 	DefaultStyle string `json:"default_style"`
+	// AutoCompress 请求时自动压缩配置（无需显式样式名，访问原图即触发）。
+	// nil 表示不启用自动压缩。
+	AutoCompress *AutoCompressConfig `json:"auto_compress,omitempty"`
+}
+
+// AutoCompressConfig 描述无显式样式请求时的自动压缩与格式转换参数。
+// 当用户直接访问原图 URL（无 !styleName 也无 ?w= 等动态参数）时，
+// 若此配置 Enabled，Matcher 会返回一个等效的 ResolvedStyle，
+// 经 Engine 处理后由 DiskCache 缓存，后续请求直接命中缓存。
+type AutoCompressConfig struct {
+	// Enabled 是否启用请求时自动压缩。
+	Enabled bool `json:"enabled"`
+	// Quality 压缩质量 1-100，默认 85。
+	Quality int `json:"quality,omitempty"`
+	// MaxWidth 最大宽度（像素），0 表示不限制。
+	MaxWidth int `json:"max_width,omitempty"`
+	// MaxHeight 最大高度（像素），0 表示不限制。
+	MaxHeight int `json:"max_height,omitempty"`
+	// Format 输出格式：webp / avif / jpg / original（空=保持原格式）。
+	Format string `json:"format,omitempty"`
+	// AutoRotate 是否按 EXIF 自动旋转，默认 true。
+	AutoRotate bool `json:"auto_rotate,omitempty"`
 }
 
 // NormalizeApplyExtensionsWhenEnabled 在 Enabled 为 true 且扩展名列表为空时，
